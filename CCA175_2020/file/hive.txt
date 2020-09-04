@@ -1,0 +1,57 @@
+####### Hive #######
+# Hive is a metastore database, doesn't have PK, indexes
+
+#Launch hive - MapReduce framework:
+    hive
+    describe orders;
+    describe formatted orders;
+    show functions;
+    describe function length;
+
+#Create table
+    create table orders (order_id int, ord_date string)
+    row format delimited fields terminated by ','
+    partitioned by (country string)
+    stored as textfile; (orc, avro);
+
+#Get avro schema (from local) input_file -> outputfile
+    avro-tools getschema part-m-00000.avro > orders.avsc
+
+# Loading data (external table - > point to file in HDFS)
+    create external table orders_sqoop
+    STORED AS AVRO
+    LOCATION '/user/hive/warehouse/retail_stage.db/orders'
+    TBLPROPERTIES ('avro.schema.url'='/user/hive/schemas/order/orders.avsc');
+
+#Load from a local file to hive table
+    load data local inpath /tmp/localFile.txt into table hive_table partition(date='2008-06-08', country='US');
+
+# Load from hdfs
+    load data inpath '/data/retail_db/orders' into table hive_table;
+
+#insert
+    insert into table orders
+    select * from tanyaparsh_retail_db_txt.orders;
+
+    insert overwrite table orders_avro partition(order_month)
+    select order_id, order_date, order_date as order_month
+    from default.orders_sqoop;
+
+#Impala. run impala
+    impala-shell
+    #Whenever you change table through Hive run:
+    Invalidate metadata
+    select * from orders limit 1;
+
+#Analytical functions
+select id,
+subtotal/sum(subtotal) over (partition by id) order_revenue,
+rank() over (partition by id order by subtotal desc) rnk_revenue,
+from orders;
+
+## Windowing - LEAD, LAG - previous record, FIRST_VALUE, LAST_VALUE
+select
+        lead(subtotal) over (partition by order_id) lead_subtotal,
+        lag(subtotal) over (partition by order_id) lag__subtotal,
+        first_value(subtotal) over (partition by order_id) first
+from orders;
